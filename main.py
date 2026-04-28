@@ -1,22 +1,57 @@
-from DrissionPage import ChromiumPage, ChromiumOptions
+from curl_cffi.requests import Session
 import json
+import time
+import random
 
-def extract_seat_data(page):
-    print(page.url)
+from parser import extract_venue_sessions
+from extract_seats import extract_seat_layout
 
 
-# co = ChromiumOptions()
-# co.headless(False)
+def main():
+    session = Session()
 
-page = ChromiumPage()                     
-page.get('https://in.bookmyshow.com/movies/ahmedabad/bhooth-bangla/buytickets/ET00411383/20260427')
+    url = "https://in.bookmyshow.com/movies/ahmedabad/bhooth-bangla/buytickets/ET00411383/20260427"
 
-container=page.eles("css:div.ReactVirtualized__Grid__innerScrollContainer div")
-for i in container:
-    for j in i.eles("css:div.sc-1la7659-0"):
-        print(j)
-        tab=j.click()
-        extract_seat_data(tab)
+    response = session.get(url, impersonate="chrome")
 
-    break   
-page.close()    
+    venues = extract_venue_sessions(response.text)
+    venue_records = list(venues.values())
+
+    
+    with open("venues.json", "w", encoding="utf-8") as f:
+        json.dump(venue_records, f, ensure_ascii=False, indent=2)
+
+    data = []
+
+    for venue in venue_records:
+        print(f"\nProcessing Venue: {venue['venue_name']} (Code: {venue['venue_code']})")
+
+        code = venue['venue_code']
+
+        venue_obj = {
+        "venue_name": venue['venue_name'],
+        "venue_code": code,
+        "shows": []
+        }
+        for session_data in venue['sessions']:
+            param1 = session_data['session_id']
+
+            print(f"   Session: {param1}")
+
+            seat_layout = extract_seat_layout(session, code, param1)
+
+            venue_obj["shows"].append({
+            "time": session_data['time'],
+            "session_id": param1,
+            "seat_layout": seat_layout
+            })
+
+            time.sleep(random.uniform(1.5, 3.5))
+        data.append(venue_obj)
+
+    with open("seat_layouts.json", "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+
+if __name__ == "__main__":
+    main()
